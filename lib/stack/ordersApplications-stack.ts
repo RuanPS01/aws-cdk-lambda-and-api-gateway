@@ -5,6 +5,7 @@ import { Construct } from 'constructs';
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb"
 import * as sns from "aws-cdk-lib/aws-sns"
 import * as subs from "aws-cdk-lib/aws-sns-subscriptions"
+import * as iam from "aws-cdk-lib/aws-iam"
 
 interface OrdersApplicationStackProps extends cdk.StackProps {
     productsDdb: dynamodb.Table
@@ -64,5 +65,65 @@ export class OrdersApplicationStack extends cdk.Stack {
         props.productsDdb.grantReadData(this.ordersHandler)
         ordersDdb.grantReadWriteData(this.ordersHandler)
         ordersTopic.grantPublish(this.ordersHandler)
+
+        const orderEventsHandler = new lambdaNodeJS.NodejsFunction(this, "OrderEventsFunction",
+            {
+                functionName: "OrderEventsFunction",
+                entry: "lambda/orders/orderEventsFunction.ts",
+                handler: "handler",
+                bundling: {
+                    minify: false,
+                    sourceMap: false,
+                },
+                tracing: lambda.Tracing.ACTIVE,
+                memorySize: 128,
+                timeout: cdk.Duration.seconds(30),
+                environment: {
+                    EVENTS_DDB: props.eventsDdb.tableName,
+                },
+                insightsVersion: lambda.LambdaInsightsVersion.VERSION_1_0_143_0
+            }
+        )
+        ordersTopic.addSubscription(new subs.LambdaSubscription(orderEventsHandler))
+
+        const eventsDdbPolicy = new iam.PolicyStatement({
+            effect: iam.Effect.ALLOW,
+            actions: ["dynamodb:PutItem"],
+            resources: [props.eventsDdb.tableArn],
+            conditions: {
+                ['ForAllValues:StringLike']: {
+                    'dynamodb:LeadingKeys': ['#order_*']
+                }
+            }
+        })
+        orderEventsHandler.addToRolePolicy(eventsDdbPolicy)
+
+        const billingHandler = new lambdaNodeJS.NodejsFunction(this, "BillingFunction",
+            {
+                functionName: "BillingFunction",
+                entry: "lambda/orders/billingFunction.ts",
+                handler: "handler",
+                bundling: {
+                    minify: false,
+                    sourceMap: false,
+                },
+                tracing: lambda.Tracing.ACTIVE,
+                memorySize: 128,
+                timeout: cdk.Duration.seconds(30),
+                environment: {
+                    EVENTS_DDB: props.eventsDdb.tableName,
+                },
+                insightsVersion: lambda.LambdaInsightsVersion.VERSION_1_0_143_0
+            }
+        )
+        ordersTopic.addSubscription(new subs.LambdaSubscription(billingHandler, {
+            filterPolicy: {
+                eventType: sns.SubscriptionFilter.stringFilter({
+                    allowlist: [
+                        "CREATED"
+                    ]
+                })
+            },
+        }))
     }
 }
