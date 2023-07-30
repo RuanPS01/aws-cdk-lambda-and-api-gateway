@@ -21,17 +21,40 @@ export class ProductsAppStack extends cdk.Stack {
 
         this.productsDdb = new dynamodb.Table(this, "ProductsDdb", {
             tableName: "products",
-            removalPolicy: cdk.RemovalPolicy.DESTROY,
             partitionKey: {
                 name: "id",
                 type: dynamodb.AttributeType.STRING,
             },
-            billingMode: dynamodb.BillingMode.PROVISIONED,
-            readCapacity: 1,
-            writeCapacity: 1,
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+            // billingMode: dynamodb.BillingMode.PROVISIONED,
+            // readCapacity: 1, // for PROVISIONED
+            // writeCapacity: 1, // for PROVISIONED
+            removalPolicy: cdk.RemovalPolicy.DESTROY,
         });
 
+        /* //Auto scaling 
+        const readScale = this.productsDdb.autoScaleReadCapacity({
+            maxCapacity: 4,
+            minCapacity: 1,
+        });
 
+        readScale.scaleOnUtilization({
+            targetUtilizationPercent: 10,
+            scaleInCooldown: cdk.Duration.seconds(60),
+            scaleOutCooldown: cdk.Duration.seconds(60),
+        });
+
+        const writeScale = this.productsDdb.autoScaleWriteCapacity({
+            maxCapacity: 4,
+            minCapacity: 1,
+        });
+
+        writeScale.scaleOnUtilization({
+            targetUtilizationPercent: 10,
+            scaleInCooldown: cdk.Duration.seconds(60),
+            scaleOutCooldown: cdk.Duration.seconds(60)
+        });
+        */
         this.handler = new lambdaNodeJS.NodejsFunction(this, "ProductsFunction", {
             functionName: "ProductsFunction",
             entry: "lambda/products/productsFunction.ts",
